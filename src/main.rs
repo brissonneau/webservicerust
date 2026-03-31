@@ -1,103 +1,112 @@
-mod models;
 mod database;
+mod models;
 
 use axum::{
-    extract::{State, Query},
+    extract::{Query, State},
     http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post},
     Json, Router,
 };
+use chrono::Duration;
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 
 #[tokio::main]
 async fn main() {
-    
     let pool = database::initialiser_db().await;
 
-    
     let app = Router::new()
-        .route("/", get(page_accueil)) 
+        .route("/", get(page_accueil))
         .route("/vent", post(ajouter_vent))
         .route("/vent", get(recuperer_vent))
         .with_state(pool);
 
-    
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
-    println!(" Serveur météo Rust actif sur http://{}", addr);
-    
+    println!("Serveur météo Rust actif sur http://{}", addr);
+
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
 
-
+// --- Handlers ---
 
 async fn page_accueil(State(pool): State<SqlitePool>) -> Html<String> {
-    
     let mesures: Vec<models::Vent> = sqlx::query_as::<_, models::Vent>(
-        "SELECT vitesse, direction, horodatage FROM vent ORDER BY horodatage DESC"
+        "SELECT vitesse, direction, horodatage FROM vent ORDER BY horodatage DESC",
     )
     .fetch_all(&pool)
     .await
-    .unwrap_or_else(|_| vec![]); 
+    .unwrap_or_else(|_| vec![]);
 
-    
-    let mut lignes_tableau = String::new();
-    for m in mesures {
-        lignes_tableau.push_str(&format!(
-            "<tr><td>{:.2} km/h</td><td>{}°</td><td>{}</td></tr>",
-            m.vitesse, 
-            m.direction, 
+    let mut lignes = String::new();
+    for m in &mesures {
+        lignes.push_str(&format!(
+            "<tr><td>{:.1} km/h</td><td>{}°</td><td>{}</td></tr>",
+            m.vitesse,
+            m.direction,
             m.horodatage.format("%d/%m/%Y %H:%M:%S")
         ));
     }
 
-    
-    let html_content = format!(r#"
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <title>Historique Météo</title>
-                <style>
-                    body {{ font-family: sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }}
-                    .container {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: inline-block; min-width: 400px; }}
-                    table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-                    th, td {{ border: 1px solid #ddd; padding: 12px; text-align: center; }}
-                    th {{ background-color: #2e7d32; color: white; }}
-                    tr:nth-child(even) {{ background-color: #f2f2f2; }}
-                    h1 {{ color: #2e7d32; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Relevés de la Station </h1>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Vitesse</th>
-                                <th>Direction</th>
-                                <th>Date et Heure</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {}
-                        </tbody>
-                    </table>
-                </div>
-            </body>
-        </html>
-    "#, lignes_tableau);
+    // Calcul de quelques stats simples si on a des données
+    let stats = if mesures.is_empty() {
+        "<p>Aucune mesure enregistrée.</p>".to_string()
+    } else {
+        let moy = mesures.iter().map(|m| m.vitesse).sum::<f64>() / mesures.len() as f64;
+        let max = mesures.iter().map(|m| m.vitesse).fold(f64::MIN, f64::max);
+        let min = mesures.iter().map(|m| m.vitesse).fold(f64::MAX, f64::min);
+        format!(
+            "<p>📊 {} mesures &nbsp;|&nbsp; moy : <b>{:.1} km/h</b> \
+             &nbsp;|&nbsp; min : <b>{:.1}</b> &nbsp;|&nbsp; max : <b>{:.1}</b></p>",
+            mesures.len(), moy, min, max
+        )
+    };
 
-    Html(html_content)
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Station Météo</title>
+    <style>
+        body {{ font-family: sans-serif; background:#f0f4f8; margin:0; padding:30px; }}
+        h1   {{ color:#1565c0; }}
+        .carte {{
+            background:white; border-radius:12px; padding:24px;
+            box-shadow:0 4px 12px rgba(0,0,0,.1); max-width:680px; margin:auto;
+        }}
+        .stats {{ color:#555; margin-bottom:12px; }}
+        table {{ width:100%; border-collapse:collapse; margin-top:16px; }}
+        th    {{ background:#1565c0; color:white; padding:10px; }}
+        td    {{ border:1px solid #ddd; padding:10px; text-align:center; }}
+        tr:nth-child(even) {{ background:#f5f5f5; }}
+    </style>
+</head>
+<body>
+<div class="carte">
+    <h1>🌬️ Relevés de la Station</h1>
+    <div class="stats">{stats}</div>
+    <table>
+        <thead><tr><th>Vitesse</th><th>Direction</th><th>Date et Heure</th></tr></thead>
+        <tbody>{lignes}</tbody>
+    </table>
+</div>
+</body>
+</html>"#,
+        stats = stats,
+        lignes = lignes
+    );
+
+    Html(html)
 }
 
 async fn ajouter_vent(
-    State(pool): State<SqlitePool>, 
+    State(pool): State<SqlitePool>,
     Json(payload): Json<models::Vent>,
 ) -> impl IntoResponse {
-    let resultat = sqlx::query(
-        "INSERT INTO vent (vitesse, direction, horodatage) VALUES (?, ?, ?)"
+    let res = sqlx::query(
+        "INSERT INTO vent (vitesse, direction, horodatage) VALUES (?, ?, ?)",
     )
     .bind(payload.vitesse)
     .bind(payload.direction)
@@ -105,7 +114,7 @@ async fn ajouter_vent(
     .execute(&pool)
     .await;
 
-    match resultat {
+    match res {
         Ok(_) => StatusCode::CREATED.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -115,18 +124,21 @@ async fn recuperer_vent(
     State(pool): State<SqlitePool>,
     Query(filtre): Query<models::FiltreMeteo>,
 ) -> impl IntoResponse {
-    
-    let fin = filtre.fin.unwrap_or(filtre.debut + chrono::Duration::days(1));
+    let fin = filtre
+        .fin
+        .unwrap_or_else(|| filtre.debut + Duration::days(1));
 
-    let resultat = sqlx::query_as::<_, models::Vent>(
-        "SELECT vitesse, direction, horodatage FROM vent WHERE horodatage BETWEEN ? AND ?"
+    let res = sqlx::query_as::<_, models::Vent>(
+        "SELECT vitesse, direction, horodatage FROM vent \
+         WHERE horodatage BETWEEN ? AND ? \
+         ORDER BY horodatage ASC",
     )
     .bind(filtre.debut)
     .bind(fin)
     .fetch_all(&pool)
     .await;
 
-    match resultat {
+    match res {
         Ok(mesures) => Json(mesures).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

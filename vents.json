@@ -1,0 +1,9 @@
+[
+  { "vitesse": 15.3, "direction": 90,  "horodatage": "2025-06-01T08:00:00Z" },
+  { "vitesse": 22.7, "direction": 180, "horodatage": "2025-06-01T12:00:00Z" },
+  { "vitesse":  8.1, "direction": 270, "horodatage": "2025-06-01T18:00:00Z" },
+  { "vitesse": 31.0, "direction": 315, "horodatage": "2025-06-02T06:00:00Z" },
+  { "vitesse": 11.5, "direction":  45, "horodatage": "2025-06-02T14:00:00Z" },
+  { "vitesse": 19.8, "direction": 135, "horodatage": "2025-06-03T09:00:00Z" },
+  { "vitesse":  5.0, "direction": 200, "horodatage": "2025-06-03T21:00:00Z" }
+]

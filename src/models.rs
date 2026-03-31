@@ -1,10 +1,10 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
 
-#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)] 
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct Vent {
-    pub vitesse: f64,        
-    pub direction: i32,      
+    pub vitesse: f64,
+    pub direction: i32,
     pub horodatage: DateTime<Utc>,
 }
 
