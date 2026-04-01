@@ -3,14 +3,6 @@ name = "meteo"
 version = "0.1.0"
 edition = "2024"
 
-[[bin]]
-name = "serveur"
-path = "src/main.rs"
-
-[[bin]]
-name = "injecter"
-path = "src/bin/injecter.rs"
-
 [dependencies]
 axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
