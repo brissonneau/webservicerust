@@ -1,20 +1,52 @@
-// Utilisation :
-//   cargo run --bin injecter                    <- lit vents.json par défaut
-//   cargo run --bin injecter -- vents.json      <- fichier explicite
-//   cargo run --bin injecter -- vents_juin.json
+//! Outil en ligne de commande pour injecter des mesures de vent depuis un fichier JSON.
+//!
+//! Ce binaire lit un fichier JSON contenant un tableau de mesures [`Vent`] et les insère
+//! directement dans la base de données SQLite `meteo.db`, sans passer par le serveur HTTP.
+//!
+//! # Utilisation
+//! ```bash
+//! cargo run --bin injecter                     # lit vents.json par défaut
+//! cargo run --bin injecter -- vents_juin.json  # fichier explicite
+//! ```
+//!
+//! # Format du fichier JSON attendu
+//! ```json
+//! [
+//!   { "vitesse": 15.3, "direction": 90,  "horodatage": "2025-06-01T08:00:00Z" },
+//!   { "vitesse": 22.7, "direction": 180, "horodatage": "2025-06-01T12:00:00Z" }
+//! ]
+//! ```
+//!
+//! # Prérequis
+//! La base `meteo.db` doit exister. Si ce n'est pas le cas, lancez d'abord
+//! `cargo run --bin serveur` une fois pour qu'elle soit créée.
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::{env, fs, process};
 
+/// Mesure de vent désérialisée depuis le fichier JSON d'entrée.
+///
+/// Doit correspondre exactement au schéma de la table `vent` en base.
 #[derive(Deserialize, Debug)]
 struct Vent {
+    /// Vitesse en km/h.
     vitesse: f64,
+    /// Direction en degrés (0–359).
     direction: i32,
+    /// Date et heure de la mesure en UTC.
     horodatage: DateTime<Utc>,
 }
 
+/// Point d'entrée du binaire `injecter`.
+///
+/// Enchaîne : lecture du fichier → désérialisation JSON → connexion SQLite → insertions.
+/// Affiche un compte-rendu ligne par ligne et un résumé final.
+///
+/// # Exits
+/// - `0` : toutes les insertions ont réussi (ou partiellement, avec résumé).
+/// - `1` : fichier introuvable, JSON invalide, ou base de données inaccessible.
 #[tokio::main]
 async fn main() {
     // 1. Fichier JSON à lire

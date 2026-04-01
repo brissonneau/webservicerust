@@ -1,5 +1,22 @@
+//! Point d'entrée du serveur REST météo.
+//!
+//! Ce binaire expose trois routes HTTP :
+//!
+//! | Méthode | Route   | Description                                      |
+//! |---------|---------|--------------------------------------------------|
+//! | `GET`   | `/`     | Interface web HTML avec formulaire et historique |
+//! | `POST`  | `/vent` | Ajoute une mesure de vent (JSON)                 |
+//! | `GET`   | `/vent` | Récupère les mesures filtrées par date (JSON)    |
+//!
+//! # Lancement
+//! ```bash
+//! cargo run --bin serveur
+//! ```
+//! Le serveur écoute sur `http://127.0.0.1:3000`.
+
 mod database;
 mod models;
+mod injecter;
 
 use axum::{
     extract::{Query, State},
@@ -12,6 +29,7 @@ use chrono::Duration;
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
 
+/// Initialise la base de données et démarre le serveur Axum.
 #[tokio::main]
 async fn main() {
     let pool = database::initialiser_db().await;
@@ -29,8 +47,18 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-// --- Handlers ---
-
+/// Sert la page d'accueil HTML.
+///
+/// Affiche :
+/// - Un formulaire permettant d'ajouter une mesure directement depuis le navigateur.
+/// - Un tableau de tous les relevés existants, triés du plus récent au plus ancien.
+/// - Des statistiques simples (nombre de mesures, vitesse min / moyenne / max).
+///
+/// Le formulaire soumet les données via un `fetch` JavaScript vers `POST /vent`,
+/// puis insère la nouvelle ligne dans le tableau sans recharger la page.
+///
+/// # Paramètres
+/// - `pool` : pool de connexions SQLite injecté par Axum via [`State`].
 async fn page_accueil(State(pool): State<SqlitePool>) -> Html<String> {
     let mesures: Vec<models::Vent> = sqlx::query_as::<_, models::Vent>(
         "SELECT vitesse, direction, horodatage FROM vent ORDER BY horodatage DESC",
@@ -101,6 +129,24 @@ async fn page_accueil(State(pool): State<SqlitePool>) -> Html<String> {
     Html(html)
 }
 
+/// Insère une nouvelle mesure de vent dans la base de données.
+///
+/// # Route
+/// `POST /vent`
+///
+/// # Corps de la requête
+/// JSON correspondant à la structure [`models::Vent`] :
+/// ```json
+/// {
+///   "vitesse": 15.3,
+///   "direction": 90,
+///   "horodatage": "2025-06-01T08:00:00Z"
+/// }
+/// ```
+///
+/// # Réponses
+/// - `201 Created` : mesure enregistrée avec succès.
+/// - `500 Internal Server Error` : échec de l'insertion SQLite (corps = message d'erreur).
 async fn ajouter_vent(
     State(pool): State<SqlitePool>,
     Json(payload): Json<models::Vent>,
@@ -120,6 +166,25 @@ async fn ajouter_vent(
     }
 }
 
+/// Récupère les mesures de vent filtrées par plage de dates.
+///
+/// # Route
+/// `GET /vent`
+///
+/// # Paramètres query
+/// Voir [`models::FiltreMeteo`] :
+/// - `debut` (obligatoire) : borne inférieure en RFC 3339 / ISO 8601.
+/// - `fin` (optionnel) : borne supérieure. Si absent, `debut + 24h` est utilisé.
+///
+/// # Exemples
+/// ```text
+/// GET /vent?debut=2025-06-01T00:00:00Z
+/// GET /vent?debut=2025-06-01T00:00:00Z&fin=2025-06-03T00:00:00Z
+/// ```
+///
+/// # Réponses
+/// - `200 OK` : tableau JSON de [`models::Vent`], trié par horodatage croissant.
+/// - `500 Internal Server Error` : échec de la requête SQLite.
 async fn recuperer_vent(
     State(pool): State<SqlitePool>,
     Query(filtre): Query<models::FiltreMeteo>,
