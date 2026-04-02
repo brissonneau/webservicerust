@@ -77,7 +77,6 @@ async fn page_accueil(State(pool): State<SqlitePool>) -> Html<String> {
         ));
     }
 
-    // Calcul de quelques stats simples si on a des données
     let stats = if mesures.is_empty() {
         "<p>Aucune mesure enregistrée.</p>".to_string()
     } else {
@@ -164,7 +163,7 @@ async fn ajouter_vent(
         Ok(_) => StatusCode::CREATED.into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
-}
+}//créer avec la commande curl 
 
 /// Récupère les mesures de vent filtrées par plage de dates.
 ///

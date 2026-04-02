@@ -49,7 +49,7 @@ struct Vent {
 /// - `1` : fichier introuvable, JSON invalide, ou base de données inaccessible.
 #[tokio::main]
 async fn main() {
-    // 1. Fichier JSON à lire
+    
     let chemin = env::args().nth(1).unwrap_or_else(|| "vents.json".to_string());
 
     let contenu = fs::read_to_string(&chemin).unwrap_or_else(|e| {
@@ -64,7 +64,7 @@ async fn main() {
 
     println!("Fichier '{}' — {} mesure(s) à insérer", chemin, vents.len());
 
-    // 2. Connexion directe à la base (même fichier que le serveur)
+    
     let pool = SqlitePool::connect("sqlite:meteo.db?mode=rwc")
         .await
         .unwrap_or_else(|e| {
@@ -73,7 +73,7 @@ async fn main() {
             process::exit(1);
         });
 
-    // 3. Insertion une par une avec compte-rendu
+    
     let mut succes = 0u32;
     let mut echecs = 0u32;
 
@@ -104,5 +104,5 @@ async fn main() {
         }
     }
 
-    println!("\n✅ {} insérées   ❌ {} échouées", succes, echecs);
+    println!("\n {} insérées  {} échouées", succes, echecs);
 }
